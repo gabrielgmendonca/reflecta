@@ -22,6 +22,8 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
+      - key: BACKEND_URL
+        sync: false
 
   # Frontend Static Site
   - type: web

@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     # Frontend URL for OAuth redirect
     frontend_url: str = "http://localhost:5173"
 
+    # Backend URL for OAuth callback (needed behind reverse proxies)
+    backend_url: str = "http://localhost:8000"
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, v):
