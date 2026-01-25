@@ -38,6 +38,10 @@ class Settings(BaseSettings):
         # asyncpg uses 'ssl' instead of 'sslmode'
         if v and "sslmode=" in v:
             v = v.replace("sslmode=", "ssl=")
+        # Remove channel_binding parameter (Neon-specific, not supported by asyncpg)
+        if v and "channel_binding=" in v:
+            import re
+            v = re.sub(r"[&?]channel_binding=[^&]*", "", v)
         return v
 
     class Config:
