@@ -32,9 +32,12 @@ class Settings(BaseSettings):
     def convert_postgres_url(cls, v):
         # Convert postgres:// to postgresql+asyncpg:// for SQLAlchemy async
         if v and v.startswith("postgres://"):
-            return v.replace("postgres://", "postgresql+asyncpg://", 1)
-        if v and v.startswith("postgresql://"):
-            return v.replace("postgresql://", "postgresql+asyncpg://", 1)
+            v = v.replace("postgres://", "postgresql+asyncpg://", 1)
+        elif v and v.startswith("postgresql://"):
+            v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        # asyncpg uses 'ssl' instead of 'sslmode'
+        if v and "sslmode=" in v:
+            v = v.replace("sslmode=", "ssl=")
         return v
 
     class Config:
