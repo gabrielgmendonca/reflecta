@@ -15,6 +15,7 @@ interface BoardState {
   updateCard: (card: Card) => void;
   removeCard: (cardId: number) => void;
   addCard: (card: Card) => void;
+  replaceOptimisticCard: (tempId: number, realCard: Card) => void;
   updateVoteCount: (cardId: number, voteCount: number, votes: Card['votes']) => void;
   updateTimerEndTime: (endTime: string | null) => void;
   addGroup: (group: CardGroup, cardIds: number[]) => void;
@@ -59,6 +60,11 @@ const useBoardStore = create<BoardState>((set) => ({
   addCard: (newCard) =>
     set((state) => {
       if (!state.board) return state;
+      // Check if card already exists (optimistic update case)
+      const cardExists = state.board.columns.some((col) =>
+        col.cards.some((card) => card.id === newCard.id)
+      );
+      if (cardExists) return state;
       return {
         board: {
           ...state.board,
@@ -67,6 +73,21 @@ const useBoardStore = create<BoardState>((set) => ({
               ? { ...col, cards: [...col.cards, newCard] }
               : col
           ),
+        },
+      };
+    }),
+  replaceOptimisticCard: (tempId: number, realCard: Card) =>
+    set((state) => {
+      if (!state.board) return state;
+      return {
+        board: {
+          ...state.board,
+          columns: state.board.columns.map((col) => ({
+            ...col,
+            cards: col.cards.map((card) =>
+              card.id === tempId ? realCard : card
+            ),
+          })),
         },
       };
     }),
@@ -184,7 +205,23 @@ export function BoardProvider({ children, slug }: { children: ReactNode; slug: s
 
       switch (type) {
         case 'card:created':
-          store.addCard(payload as unknown as Card);
+          {
+            const newCard = payload as unknown as Card;
+            // Check if there's an optimistic card to replace (negative ID, same content, same column)
+            const optimisticCard = store.board?.columns
+              .find((c) => c.id === newCard.column_id)
+              ?.cards.find(
+                (card) =>
+                  card.id < 0 &&
+                  card.content === newCard.content &&
+                  card.session_id === newCard.session_id
+              );
+            if (optimisticCard) {
+              store.replaceOptimisticCard(optimisticCard.id, newCard);
+            } else {
+              store.addCard(newCard);
+            }
+          }
           break;
         case 'card:updated':
         case 'card:moved':
@@ -232,9 +269,25 @@ export function BoardProvider({ children, slug }: { children: ReactNode; slug: s
 
   const createCard = useCallback(
     async (columnId: number, content: string, color?: string) => {
-      send('card:create', { column_id: columnId, content, color });
+      // Optimistic update: add card immediately with a temporary negative ID
+      const tempId = -Date.now();
+      const column = store.board?.columns.find((c) => c.id === columnId);
+      const optimisticCard: Card = {
+        id: tempId,
+        content,
+        color: color || '#ffffff',
+        column_id: columnId,
+        position: column?.cards.length ?? 0,
+        vote_count: 0,
+        votes: [],
+        group_id: null,
+        session_id: sessionId,
+        created_at: new Date().toISOString(),
+      };
+      store.addCard(optimisticCard);
+      send('card:create', { column_id: columnId, content, color, temp_id: tempId });
     },
-    [send]
+    [send, sessionId, store.board]
   );
 
   const updateCard = useCallback(
