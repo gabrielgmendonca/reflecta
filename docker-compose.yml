@@ -1,0 +1,13 @@
+services:
+  app:
+    build: .
+    ports:
+      - "3000:80"
+    volumes:
+      - reflecta-data:/data
+    env_file:
+      - .env.production
+    restart: unless-stopped
+
+volumes:
+  reflecta-data:

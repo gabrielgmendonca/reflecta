@@ -1,0 +1,28 @@
+interface LogoProps {
+  className?: string;
+}
+
+export function Logo({ className = "w-10 h-10" }: LogoProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 48 48"
+      fill="none"
+      className={className}
+    >
+      {/* Mirror frame */}
+      <rect x="8" y="4" width="32" height="40" rx="4" stroke="#6366f1" strokeWidth="3" fill="none"/>
+
+      {/* Reflection line (diagonal) */}
+      <line x1="8" y1="44" x2="40" y2="4" stroke="#6366f1" strokeWidth="1.5" strokeDasharray="4 3" opacity="0.4"/>
+
+      {/* Top half - filled shapes (the "reality") */}
+      <circle cx="20" cy="16" r="4" fill="#fda4af"/>
+      <rect x="28" y="12" width="6" height="6" rx="1" fill="#93c5fd"/>
+
+      {/* Bottom half - outlined shapes (the "reflection") */}
+      <circle cx="28" cy="32" r="4" stroke="#fda4af" strokeWidth="2" fill="none" opacity="0.6"/>
+      <rect x="14" y="30" width="6" height="6" rx="1" stroke="#93c5fd" strokeWidth="2" fill="none" opacity="0.6"/>
+    </svg>
+  );
+}
