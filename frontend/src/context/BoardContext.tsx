@@ -207,8 +207,9 @@ export function BoardProvider({ children, slug }: { children: ReactNode; slug: s
         case 'card:created':
           {
             const newCard = payload as unknown as Card;
-            // Check if there's an optimistic card to replace (negative ID, same content, same column)
-            const optimisticCard = store.board?.columns
+            // Get fresh state to find optimistic card (negative ID, same content, same column)
+            const currentBoard = useBoardStore.getState().board;
+            const optimisticCard = currentBoard?.columns
               .find((c) => c.id === newCard.column_id)
               ?.cards.find(
                 (card) =>
