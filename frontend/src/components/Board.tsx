@@ -1,6 +1,7 @@
 import { DragDropContext, type DropResult } from '@hello-pangea/dnd';
 import { Column } from './Column';
 import { Timer } from './Timer';
+import { ShareButton } from './ShareButton';
 import { ExportMenu } from './ExportMenu';
 import { UserMenu } from './UserMenu';
 import { useBoard } from '../context/BoardContext';
@@ -71,6 +72,7 @@ export function Board() {
               endTime={board.timer_end_time}
               duration={board.timer_duration}
             />
+            <ShareButton />
             <ExportMenu slug={board.slug} />
             <UserMenu />
           </div>
