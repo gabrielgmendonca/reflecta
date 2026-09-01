@@ -1,7 +1,25 @@
+# Render Blueprint for Reflecta
+# Deploy: Render Dashboard > New > Blueprint > select this repo
+#
+# Creates three resources:
+#   reflecta-db   - PostgreSQL (free plan)
+#   reflecta-api  - FastAPI backend (REST + WebSocket)
+#   reflecta-web  - React static site
+#
+# Only GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are prompted for at
+# creation time; everything else is wired automatically.
+
+databases:
+  - name: reflecta-db
+    plan: free
+    region: oregon
+
 services:
-  # Backend Web Service
+  # ---------------------------------------------------------------
+  # Backend: FastAPI (REST under /api, WebSocket at /ws/{slug})
+  # ---------------------------------------------------------------
   - type: web
-    name: retro-board-api
+    name: reflecta-api
     runtime: python
     region: oregon
     plan: free
@@ -10,41 +28,56 @@ services:
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
+      # Pinned: requirements.txt (pydantic 2.5.3, asyncpg 0.29) has no
+      # wheels for Render's current default of Python 3.14.
+      - key: PYTHON_VERSION
+        value: 3.11.9
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: reflecta-db
+          property: connectionString
       - key: SECRET_KEY
         generateValue: true
+      # Must be a JSON array - see parse_cors_origins in app/config.py
       - key: CORS_ORIGINS
-        sync: false
+        value: '["https://reflecta-web.onrender.com"]'
+      # Where /api/auth/callback sends the user after a successful login
       - key: FRONTEND_URL
-        sync: false
+        value: https://reflecta-web.onrender.com
+      # Used to build the OAuth redirect_uri behind Render's proxy
+      - key: BACKEND_URL
+        value: https://reflecta-api.onrender.com
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
-      - key: BACKEND_URL
-        sync: false
 
-  # Frontend Static Site
+  # ---------------------------------------------------------------
+  # Frontend: React + Vite static site
+  # ---------------------------------------------------------------
   - type: web
-    name: retro-board-frontend
+    name: reflecta-web
     runtime: static
     rootDir: frontend
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
     headers:
-      - path: /*
+      # Vite fingerprints filenames under /assets, so these are
+      # safe to cache forever. index.html deliberately is not.
+      - path: /assets/*
         name: Cache-Control
         value: public, max-age=31536000, immutable
-      - path: /index.html
-        name: Cache-Control
-        value: no-cache
     routes:
       - type: rewrite
         source: /*
         destination: /index.html
     envVars:
+      - key: NODE_VERSION
+        value: 20.19.0
+      # Trailing /api is required: client.ts uses this as a bare
+      # prefix (`${API_BASE}/boards`) and defaults to "/api" locally.
       - key: VITE_API_URL
-        sync: false
+        value: https://reflecta-api.onrender.com/api
+      # No path suffix: useWebSocket.ts appends /ws/{slug} itself.
       - key: VITE_WS_URL
-        sync: false
+        value: wss://reflecta-api.onrender.com

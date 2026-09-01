@@ -1,104 +1,110 @@
-# Deploying to Render
+# Deploying Reflecta to Render
 
-This guide explains how to deploy the Retro Board application to Render.
+Reflecta deploys to Render as three resources, all defined in [`render.yaml`](render.yaml):
+
+| Resource | Type | URL |
+|----------|------|-----|
+| `reflecta-db` | PostgreSQL (free) | internal only |
+| `reflecta-api` | Python web service | `https://reflecta-api.onrender.com` |
+| `reflecta-web` | Static site | `https://reflecta-web.onrender.com` |
 
 ## Prerequisites
 
 1. A [Render](https://render.com) account
-2. A PostgreSQL database (Render provides one, or use an external service like Neon)
-3. Google OAuth credentials from [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+2. This repository pushed to GitHub
+3. Google OAuth credentials (optional — see [Google OAuth](#google-oauth) below)
 
-## Quick Deploy (Blueprint)
+## Deploy
 
-The easiest way is to use the `render.yaml` blueprint:
+1. In the Render Dashboard, click **New** > **Blueprint**
+2. Connect this repository; Render detects `render.yaml`
+3. Render prompts for the only two unset values:
+   - `GOOGLE_CLIENT_ID`
+   - `GOOGLE_CLIENT_SECRET`
 
-1. Push your code to a GitHub/GitLab repository
-2. In Render Dashboard, click **New** > **Blueprint**
-3. Connect your repository
-4. Render will detect `render.yaml` and create both services automatically
-5. Configure environment variables (see below)
+   Leave both blank to deploy without login, and add them later.
+4. Click **Apply**
 
-## Manual Deploy
+Everything else — the database connection string, `SECRET_KEY`, CORS origins,
+and the frontend's API/WebSocket URLs — is wired automatically by the blueprint.
 
-### 1. Create PostgreSQL Database
+### Verify the service names
 
-If using Render's database:
-1. Go to **New** > **PostgreSQL**
-2. Choose the free tier
-3. Copy the **Internal Database URL** for the backend
+The blueprint hardcodes `https://reflecta-api.onrender.com` and
+`https://reflecta-web.onrender.com` in the env vars. Render appends a random
+suffix if a name is already taken globally. After the first deploy, confirm the
+assigned URLs match; if either differs, update these five values and redeploy:
 
-### 2. Deploy Backend (Web Service)
+- `reflecta-api`: `CORS_ORIGINS`, `FRONTEND_URL`, `BACKEND_URL`
+- `reflecta-web`: `VITE_API_URL`, `VITE_WS_URL`
 
-1. Go to **New** > **Web Service**
-2. Connect your repository
-3. Configure:
-   - **Name**: `retro-board-api`
-   - **Region**: Oregon (or your preference)
-   - **Root Directory**: `backend`
-   - **Runtime**: Python 3
-   - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+## Environment variables
 
-### 3. Deploy Frontend (Static Site)
+### Backend (`reflecta-api`)
 
-1. Go to **New** > **Static Site**
-2. Connect the same repository
-3. Configure:
-   - **Name**: `retro-board-frontend`
-   - **Root Directory**: `frontend`
-   - **Build Command**: `npm ci && npm run build`
-   - **Publish Directory**: `dist`
+| Variable | Set by | Notes |
+|----------|--------|-------|
+| `PYTHON_VERSION` | blueprint | `3.11.9`. Required — `requirements.txt` has no wheels for Render's default Python 3.14. |
+| `DATABASE_URL` | blueprint | From `reflecta-db`. `postgresql://` is rewritten to `postgresql+asyncpg://` in `app/config.py`. |
+| `SECRET_KEY` | blueprint | Generated once, then stable across deploys. |
+| `CORS_ORIGINS` | blueprint | **Must be a JSON array**, e.g. `["https://reflecta-web.onrender.com"]`. |
+| `FRONTEND_URL` | blueprint | Where `/api/auth/callback` redirects after login. |
+| `BACKEND_URL` | blueprint | Builds the OAuth `redirect_uri` behind Render's proxy. |
+| `GOOGLE_CLIENT_ID` | you | Blank disables login. |
+| `GOOGLE_CLIENT_SECRET` | you | Blank disables login. |
 
-## Environment Variables
+### Frontend (`reflecta-web`)
 
-### Backend Environment Variables
+| Variable | Value | Notes |
+|----------|-------|-------|
+| `NODE_VERSION` | `20.19.0` | Matches CI. |
+| `VITE_API_URL` | `https://reflecta-api.onrender.com/api` | **The `/api` suffix is required.** `client.ts` uses this as a bare prefix (`${API_BASE}/boards`) and falls back to `/api` locally. Omitting it 404s every request. |
+| `VITE_WS_URL` | `wss://reflecta-api.onrender.com` | **No path suffix.** `useWebSocket.ts` appends `/ws/{slug}` itself. |
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | `postgresql://user:pass@host/db` |
-| `SECRET_KEY` | JWT signing key (auto-generated if using blueprint) | Random string |
-| `CORS_ORIGINS` | Allowed origins (JSON array) | `["https://retro-board-frontend.onrender.com"]` |
-| `FRONTEND_URL` | Frontend URL for OAuth redirects | `https://retro-board-frontend.onrender.com` |
-| `BACKEND_URL` | Backend URL for OAuth callback | `https://retro-board-api.onrender.com` |
-| `GOOGLE_CLIENT_ID` | Google OAuth client ID | `xxx.apps.googleusercontent.com` |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret | Your secret |
+Vite inlines these at *build* time, so changing either requires a redeploy of
+the static site, not just a restart.
 
-### Frontend Environment Variables
+## Google OAuth
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `VITE_API_URL` | Backend API URL | `https://retro-board-api.onrender.com` |
-| `VITE_WS_URL` | WebSocket URL | `wss://retro-board-api.onrender.com` |
+1. Open the [Google Cloud Console credentials page](https://console.cloud.google.com/apis/credentials)
+2. Create an **OAuth 2.0 Client ID** of type **Web application**
+3. Under **Authorized redirect URIs**, add exactly:
 
-## Google OAuth Setup
+   ```
+   https://reflecta-api.onrender.com/api/auth/callback
+   ```
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
-2. Create OAuth 2.0 credentials
-3. Add authorized redirect URI: `https://retro-board-api.onrender.com/api/auth/callback`
-4. Copy Client ID and Client Secret to backend environment variables
+4. Copy the Client ID and Client Secret into the `reflecta-api` service's
+   environment variables and redeploy.
 
-## Important Notes
+The redirect URI must match `{BACKEND_URL}/api/auth/callback` character for
+character, including the scheme and the absence of a trailing slash.
 
-- **Free tier**: Services spin down after 15 minutes of inactivity. First request after spin-down takes ~30 seconds.
-- **Database**: Render's free PostgreSQL databases expire after 90 days. Consider using [Neon](https://neon.tech) for a persistent free tier.
-- **WebSocket**: Render supports WebSocket connections on web services.
+## Free tier caveats
+
+- **Spin-down.** Free services sleep after 15 minutes of inactivity. The next
+  request takes ~30s, and any open WebSocket is dropped — collaborators see a
+  reconnect on the first visit after an idle period.
+- **Database expiry.** Render's free PostgreSQL instances are deleted after 90
+  days. For something longer-lived, point `DATABASE_URL` at a
+  [Neon](https://neon.tech) database instead and remove the `databases:` block.
 
 ## Troubleshooting
 
-### Database Connection Issues
+**Build fails on `pydantic-core` / `asyncpg`** — `PYTHON_VERSION` is not being
+applied. Confirm it is set to `3.11.9` on `reflecta-api`.
 
-If using Neon or external PostgreSQL, the connection string may include parameters like `channel_binding=require` that aren't supported by asyncpg. The app automatically strips these parameters.
+**Every API call 404s** — `VITE_API_URL` is missing the `/api` suffix.
 
-### CORS Errors
+**CORS errors** — `CORS_ORIGINS` must be a JSON array containing the frontend's
+exact origin, with no trailing slash.
 
-Ensure `CORS_ORIGINS` includes your frontend URL and is formatted as a JSON array:
-```
-["https://your-frontend.onrender.com"]
-```
+**WebSocket won't connect** — `VITE_WS_URL` must use `wss://` (not `https://`)
+and must *not* include `/ws`.
 
-### OAuth Callback Errors
+**OAuth "redirect_uri_mismatch"** — the URI in Google Console does not match
+`{BACKEND_URL}/api/auth/callback`.
 
-Verify that:
-1. `BACKEND_URL` matches your Render backend URL exactly
-2. The redirect URI in Google Console matches `{BACKEND_URL}/api/auth/callback`
-3. `FRONTEND_URL` is set correctly for post-login redirects
+**Neon connection errors** — Neon's connection strings include
+`channel_binding` and `sslmode` parameters that asyncpg rejects; `app/config.py`
+strips them automatically.
